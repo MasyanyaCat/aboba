@@ -1,0 +1,91 @@
+services:
+   coredns:
+     image: coredns/coredns
+     container_name: dns
+     restart: on-failure # other option: always - if you want persistent through host reboots
+     ports:
+       - "53:53"
+       - "53:53/udp"
+     networks:
+       custom_net:
+         ipv4_address: 10.5.0.2
+     volumes:
+       - ./config:/etc/coredns
+     command: -conf /etc/coredns/Corefile
+
+   prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    ports:
+      - 9090:9090
+    dns:
+      - 10.5.0.2
+    networks:
+      custom_net:
+        ipv4_address: 10.5.0.3
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yaml:/etc/prometheus/prometheus.yaml
+      - prom_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yaml"
+   apache-exporter:
+     image:  bitnami/apache-exporter:latest
+     container_name: apache-exporter
+     ports:
+       - 9117:9117
+     dns:
+       - 10.5.0.2
+     tty: true
+     environment:
+       - APACHE_URL=http://web:8080/server-status?auto
+     depends_on:
+       - web
+     networks:
+       custom_net:
+         ipv4_address: 10.5.0.4
+
+
+   grafana:
+     image: grafana/grafana
+     container_name: grafana
+     ports:
+       - 3000:3000
+     dns:
+       - 10.5.0.2
+     networks:
+       custom_net:
+         ipv4_address: 10.5.0.5
+     restart: unless-stopped
+     environment:
+       - GF_SECURITY_ADMIN_USER=admin
+       - GF_SECURITY_ADMIN_PASSWORD=grafana
+     volumes:
+       - ./grafana:/etc/grafana/provisioning/datasources
+       - ./grafana/dashboards/dashboards.yaml:/etc/grafana/privisioning/dashboards/dashboards.yaml
+       - ./grafana/dashboards/json:/var/lib/grafana/dashboards
+     depends_on:
+       - prometheus
+   web:
+     image: httpd:latest
+     ports:
+       - 80:80
+     dns:
+       - 10.5.0.2
+
+
+     networks:
+       custom_net:
+         ipv4_address: 10.5.0.6
+
+
+volumes:
+  prom_data:
+
+networks:
+  custom_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.5.0.0/16
+          gateway: 10.5.0.1
